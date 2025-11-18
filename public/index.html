@@ -1,0 +1,280 @@
+html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>After School Lessons</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Font Awesome CDN -->
+  <script src="https://kit.fontawesome.com/a2d9b0b6d5.js" crossorigin="anonymous"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+  /*
+    Main app script
+    - Mounts a small Vue 3 app into `#app`.
+    - Handles login, lesson loading/sorting, cart management, and checkout.
+    - This is a compact demo; important accessibility hints are added
+      so this file can be used as a teaching reference.
+  */
+  // Vue helpers used by this single-file demo
+  const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+  createApp({
+    setup() {
+      // Current view: 'login' or 'shop'
+      const view = ref('login'); // 'login' or 'shop'
+      const token = ref(localStorage.getItem('token') || null);
+
+      // If token present, go to shop
+      if (token.value) view.value = 'shop';
+
+      // Login form model and error messaging
+      const loginForm = reactive({ username: '', password: '' });
+      const loginError = ref('');
+
+      async function login() {
+        loginError.value = '';
+        try {
+          const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(loginForm) });
+          if (!res.ok) throw new Error('Invalid');
+          const data = await res.json();
+          token.value = data.token;
+          localStorage.setItem('token', token.value);
+          view.value = 'shop';
+        } catch (e) {
+          loginError.value = 'Login failed';
+        }
+      }
+
+      function logout() {
+        token.value = null;
+        localStorage.removeItem('token');
+        view.value = 'login';
+      }
+
+      // --- Shop state -------------------------------------------------
+      // Lessons list and loading indicator. The server supplies lesson
+      // objects with { id, title, location, price, spaces, icon }.
+      const lessons = ref([]);
+      const loading = ref(false);
+
+      async function loadLessons() {
+        loading.value = true;
+        const res = await fetch('/api/lessons');
+        lessons.value = await res.json();
+        loading.value = false;
+      }
+
+      onMounted(() => {
+        if (view.value === 'shop') loadLessons();
+      });
+
+      // Sorting configuration used by the displayed computed list
+      const sortKey = ref('title');
+      const sortDir = ref('asc');
+
+      function sortBy(key) {
+        if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+        else { sortKey.value = key; sortDir.value = 'asc'; }
+      }
+
+      const displayed = computed(() => {
+        const arr = [...lessons.value];
+        arr.sort((a,b) => {
+          let va = a[sortKey.value];
+          let vb = b[sortKey.value];
+          if (typeof va === 'string') va = va.toLowerCase();
+          if (typeof vb === 'string') vb = vb.toLowerCase();
+          if (va < vb) return sortDir.value === 'asc' ? -1 : 1;
+          if (va > vb) return sortDir.value === 'asc' ? 1 : -1;
+          return 0;
+        });
+        return arr;
+      });
+
+      // Cart state. Each cart item is { id, qty, lesson }
+      const cart = ref([]);
+
+      // For fast lookups in the template we build a computed Set of ids.
+      // This makes `inCart` an O(1) check instead of scanning the array
+      // every time the template re-renders.
+      const cartIds = computed(() => new Set(cart.value.map(i => i.id)));
+
+      function inCart(id) {
+        return cartIds.value.has(id);
+      }
+
+      async function addToCart(lesson) {
+        if (lesson.spaces <= 0) return;
+        // call server to decrement spaces
+        const res = await fetch('/api/adjust-spaces', { method: 'POST', headers: { 'Content-Type':'application/json'}, body: JSON.stringify({ id: lesson.id, delta: -1 }) });
+        if (!res.ok) { alert('Could not add'); return; }
+        const data = await res.json();
+        // update local lesson copy
+        const idx = lessons.value.findIndex(l => l.id === lesson.id);
+        if (idx >= 0) lessons.value[idx] = data.lesson;
+        cart.value.push({ id: lesson.id, qty: 1, lesson: data.lesson });
+      }
+
+      async function removeFromCart(item) {
+        // return one space
+        const res = await fetch('/api/adjust-spaces', { method: 'POST', headers: { 'Content-Type':'application/json'}, body: JSON.stringify({ id: item.id, delta: +1 }) });
+        if (!res.ok) { alert('Could not remove'); return; }
+        const data = await res.json();
+        const idxL = lessons.value.findIndex(l => l.id === item.id);
+        if (idxL >= 0) lessons.value[idxL] = data.lesson;
+        cart.value = cart.value.filter(i => i.id !== item.id);
+      }
+
+      // Checkout form and simple validation patterns
+      const customer = reactive({ name: '', phone: '' });
+      const nameRegex = /^[A-Za-z .'-]{2,}$/;
+      const phoneRegex = /^[0-9 +()\-]{7,20}$/;
+
+      const canCheckout = computed(() => nameRegex.test(customer.name) && phoneRegex.test(customer.phone) && cart.value.length > 0);
+
+      async function checkout() {
+        if (!canCheckout.value) return;
+        // prompt confirmation
+        if (!confirm('Confirm checkout?')) return;
+        const res = await fetch('/api/checkout', { method: 'POST', headers: { 'Content-Type':'application/json'}, body: JSON.stringify({ name: customer.name, phone: customer.phone, items: cart.value }) });
+        if (!res.ok) {
+          const err = await res.json();
+          alert('Checkout failed: ' + (err.message || 'unknown'));
+          return;
+        }
+        const data = await res.json();
+        alert('Order placed! Order ID: ' + data.orderId);
+        // clear cart
+        cart.value = [];
+        // reload lessons to reflect spaces (server already updated when adding/removing but just in case)
+        await loadLessons();
+        customer.name = '';
+        customer.phone = '';
+      }
+
+      return {
+        view, token, loginForm, loginError, login, logout,
+        lessons, loading, loadLessons, sortBy, displayed, sortKey, sortDir,
+        cart, inCart, addToCart, removeFromCart,
+        customer, nameRegex, phoneRegex, canCheckout, checkout
+      };
+    },
+    template: `
+      <div class="container">
+        <template v-if="view === 'login'">
+          <!-- Use a real form so keyboard users can submit with Enter.
+            Labels are associated with inputs via \`for\`/\`id\` for accessibility. -->
+          <form class="card login-card" @submit.prevent="login" aria-labelledby="loginTitle" novalidate>
+            <h2 id="loginTitle"><i class="fa fa-school"></i> After School Lessons — Login</h2>
+
+            <div class="field">
+              <label for="username">Username</label>
+              <input id="username" name="username" v-model="loginForm.username" autocomplete="username" required />
+            </div>
+
+            <div class="field">
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" v-model="loginForm.password" autocomplete="current-password" required />
+            </div>
+
+            <div class="actions">
+              <button type="submit"><i class="fa fa-sign-in-alt"></i> Login</button>
+            </div>
+
+            <!-- Announce errors to assistive tech immediately -->
+            <p class="error" v-if="loginError" role="alert" aria-live="assertive">{{loginError}}</p>
+            <p class="hint">Use <code>admin/password</code> or <code>user/secret</code></p>
+          </form>
+        </template>
+
+        <template v-else>
+          <header class="topbar">
+            <h1><i class="fa fa-store"></i> Lesson Shop</h1>
+            <div>
+              <button class="logout" @click="logout"><i class="fa fa-sign-out-alt"></i> Logout</button>
+            </div>
+          </header>
+
+          <main>
+            <aside class="filters">
+              <h3><i class="fa fa-filter"></i> Sort</h3>
+              <div class="sort-buttons">
+                <button @click="sortBy('title')">Title <i class="fa" :class="sortKey==='title' ? (sortDir==='asc'? 'fa-sort-alpha-down' : 'fa-sort-alpha-up') : 'fa-sort'"></i></button>
+                <button @click="sortBy('location')">Location <i class="fa" :class="sortKey==='location' ? (sortDir==='asc'? 'fa-sort-amount-down' : 'fa-sort-amount-up') : 'fa-sort'"></i></button>
+                <button @click="sortBy('price')">Price <i class="fa" :class="sortKey==='price' ? (sortDir==='asc'? 'fa-sort-numeric-down' : 'fa-sort-numeric-up') : 'fa-sort'"></i></button>
+                <button @click="sortBy('spaces')">Spaces <i class="fa" :class="sortKey==='spaces' ? (sortDir==='asc'? 'fa-sort-amount-down' : 'fa-sort-amount-up') : 'fa-sort'"></i></button>
+              </div>
+
+              <h3><i class="fa fa-shopping-cart"></i> Cart ({{cart.length}})</h3>
+              <div v-if="cart.length===0">No items in cart</div>
+              <ul class="cart-list">
+                <li v-for="item in cart" :key="item.id">
+                  <strong>{{item.lesson.title}}</strong>
+                  <div>
+                    <small>{{item.lesson.location}} — £{{item.lesson.price.toFixed(2)}}</small>
+                    <!-- Provide an aria-label so screen reader users hear what will be removed -->
+                    <button class="small" @click="removeFromCart(item)" :aria-label="'Remove ' + item.lesson.title">
+                      <i class="fa fa-trash" aria-hidden="true"></i>
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              </ul>
+
+              <h4 id="customerTitle">Customer</h4>
+              <!-- Wrap customer fields in a form so keyboard users can submit with Enter. -->
+              <form class="customer-form" @submit.prevent="checkout" aria-labelledby="customerTitle" novalidate>
+                <div class="field">
+                  <label for="customer-name">Name</label>
+                  <input id="customer-name" name="customer-name" v-model="customer.name" placeholder="Full name" required aria-required="true" />
+                </div>
+                <div class="field">
+                  <label for="customer-phone">Phone</label>
+                  <input id="customer-phone" name="customer-phone" v-model="customer.phone" placeholder="Phone number" required aria-required="true" />
+                </div>
+                <button class="checkout" type="submit" :disabled="!canCheckout" :aria-disabled="!canCheckout">
+                  <i class="fa fa-credit-card" aria-hidden="true"></i>
+                  <span>Checkout</span>
+                </button>
+              </form>
+            </aside>
+
+            <section class="shop">
+              <h2>Available Lessons</h2>
+              <div v-if="loading">Loading lessons...</div>
+              <div class="lessons-grid">
+                <article class="lesson" v-for="lesson in displayed" :key="lesson.id">
+                  <div class="lesson-header">
+                    <i class="fa" :class="lesson.icon"></i>
+                    <h3>{{lesson.title}}</h3>
+                  </div>
+                  <p class="meta"><i class="fa fa-map-marker-alt"></i> {{lesson.location}} — <i class="fa fa-money-bill-wave"></i> £{{lesson.price.toFixed(2)}}</p>
+                  <p><strong>Spaces:</strong> {{lesson.spaces}}</p>
+                  <div class="actions">
+                    <button :disabled="lesson.spaces===0 || inCart(lesson.id)" :aria-disabled="lesson.spaces===0 || inCart(lesson.id)" :aria-label="inCart(lesson.id) ? 'In cart' : (lesson.spaces===0 ? 'Full' : 'Add ' + lesson.title + ' to cart')" @click.prevent="addToCart(lesson)">
+                      <i class="fa fa-cart-plus" aria-hidden="true"></i>
+                      <span v-if="inCart(lesson.id)">In Cart</span>
+                      <span v-else-if="lesson.spaces===0">Full</span>
+                      <span v-else>Add to cart</span>
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </main>
+
+          <footer class="foot">Built with Vue • Demo server</footer>
+        </template>
+      </div>
+    `    
+  }).mount('#app');
+  </script>
+</body>
+</html>
