@@ -7,10 +7,10 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// Simple in-memory users (DO NOT use in production)
+// Simple in-memory users (NOT to use in production)
 const USERS = [
-  { username: 'admin', password: 'password' },
-  { username: 'user', password: 'secret' }
+  { username: 'admin', password: '12345' },
+  { username: 'user', password: '12345' }
 ];
 
 // Create 10 lessons
@@ -63,5 +63,6 @@ app.post('/api/checkout', (req, res) => {
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
 
+// open on port 3000
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
