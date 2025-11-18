@@ -47,7 +47,10 @@
           const data = await res.json();
           token.value = data.token;
           localStorage.setItem('token', token.value);
+          // Switch to shop view and load lessons immediately so the
+          // user sees available lessons after logging in.
           view.value = 'shop';
+          await loadLessons();
         } catch (e) {
           loginError.value = 'Login failed';
         }
