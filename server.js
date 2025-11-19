@@ -8,6 +8,53 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// --- Simple logger middleware --------------------------------------
+// Logs every request to the server console and keeps an in-memory
+// history (useful for inspecting recent activity during development).
+const MAX_LOGS = 200;
+const LOGS = [];
+
+app.use((req, res, next) => {
+  const start = process.hrtime();
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || '-';
+  const { method, originalUrl } = req;
+
+  // When response finishes, compute duration and record the entry
+  res.on('finish', () => {
+    const diff = process.hrtime(start);
+    const durationMs = (diff[0] * 1e3) + (diff[1] / 1e6);
+    const entry = {
+      id: randomUUID(),
+      time: new Date().toISOString(),
+      method,
+      url: originalUrl,
+      ip,
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100,
+      // Request body may be undefined for GET requests
+      reqBody: req.body
+    };
+
+    // Push to in-memory buffer (FIFO)
+    LOGS.push(entry);
+    if (LOGS.length > MAX_LOGS) LOGS.shift();
+
+    // Human-readable console output
+    console.log(`[${entry.time}] ${entry.ip} ${entry.method} ${entry.url} -> ${entry.status} ${entry.durationMs}ms`);
+    if (entry.reqBody && Object.keys(entry.reqBody).length) {
+      // Print small request bodies inline, larger ones as JSON
+      try {
+        const s = JSON.stringify(entry.reqBody);
+        console.log('  Request body:', s.length > 500 ? s.slice(0, 500) + '... (truncated)' : s);
+      } catch (e) {
+        console.log('  Request body: [unserializable]');
+      }
+    }
+  });
+
+  next();
+});
+
 // Simple in-memory users (NOT to use in production)
 const USERS = [
   { username: 'admin', password: '12345' },
@@ -60,6 +107,18 @@ app.post('/api/checkout', (req, res) => {
   // In a real app you'd create an order. Here return success and echo order id.
   // Generate a random, hard-to-guess order id using Node's crypto API
   res.json({ success: true, orderId: 'ORD-' + randomUUID() });
+});
+
+// Endpoints to inspect server logs collected by the logger middleware
+app.get('/api/logs', (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), MAX_LOGS);
+  res.json(LOGS.slice(-limit).reverse());
+});
+
+app.get('/api/logs/:id', (req, res) => {
+  const entry = LOGS.find(l => l.id === req.params.id);
+  if (!entry) return res.status(404).json({ message: 'Log not found' });
+  res.json(entry);
 });
 
 // Serve static frontend
