@@ -249,6 +249,8 @@
               </div>
 
               <h3><i class="fa fa-shopping-cart"></i> Cart ({{cart.length}})</h3>
+              <!-- Informational hint: spaces are only reserved after checkout -->
+              <p class="hint">Note: spaces are reserved only after you complete checkout; adding to cart updates the UI locally.</p>
               <div v-if="cart.length===0">No items in cart</div>
               <ul class="cart-list">
                 <li v-for="item in cart" :key="item.id">

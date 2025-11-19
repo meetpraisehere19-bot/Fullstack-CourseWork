@@ -91,15 +91,9 @@ app.get('/api/lessons', (req, res) => {
   res.json(LESSONS);
 });
 
-// Endpoint to update spaces when item added/removed from cart
-app.post('/api/adjust-spaces', (req, res) => {
-  const { id, delta } = req.body; // delta: -1 for add, +1 for remove
-  const lesson = LESSONS.find(l => l.id === id);
-  if (!lesson) return res.status(404).json({ message: 'Lesson not found' });
-  if (lesson.spaces + delta < 0) return res.status(400).json({ message: 'Not enough spaces' });
-  lesson.spaces += delta;
-  res.json({ lesson });
-});
+// NOTE: The legacy POST /api/adjust-spaces endpoint was removed.
+// Space updates are now performed via the RESTful PUT
+// /api/lessons/:id/spaces endpoint when an order is submitted.
 
 // PUT /api/lessons/:id/spaces
 // RESTful endpoint to update the available spaces for a lesson.
