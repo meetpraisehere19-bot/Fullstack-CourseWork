@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 const { randomUUID } = require('crypto');
 
 const app = express();
@@ -121,7 +122,23 @@ app.get('/api/logs/:id', (req, res) => {
   res.json(entry);
 });
 
-// Serve static frontend
+// Image serving endpoint: returns images from `public/images/{name}`.
+// If the file doesn't exist, returns a JSON 404 response.
+app.get('/images/:name', (req, res) => {
+  const name = req.params.name || '';
+  const safeName = path.basename(name); // prevent path traversal
+  const imagesDir = path.join(__dirname, 'public', 'images');
+  const filePath = path.join(imagesDir, safeName);
+
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    res.sendFile(filePath);
+  });
+});
+
+// Serve other static frontend assets
 app.use(express.static(path.join(__dirname, 'public')));
 
 // open on port 3000
