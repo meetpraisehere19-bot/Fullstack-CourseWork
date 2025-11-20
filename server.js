@@ -72,7 +72,7 @@ let LESSONS = [
   { id: 6, title: 'Art & Design', location: 'Studio A', price: 11.0, spaces: 9, icon: 'fa-paint-brush' },
   { id: 7, title: 'Drama Workshop', location: 'Theatre 2', price: 13.0, spaces: 7, icon: 'fa-theater-masks' },
   { id: 8, title: 'Music Makers', location: 'Studio B', price: 14.0, spaces: 10, icon: 'fa-music' },
-  { id: 9, title: 'Coding for Kids', location: 'Lab 1', price: 16.0, spaces: 4, icon: 'fa-laptop-code' },
+  { id: 9, title: 'Coding for Kids', location: 'Lab 1', price: 16.0, spaces: 5, icon: 'fa-laptop-code' },
   { id: 10, title: 'Language Club', location: 'Theatre 1', price: 8.0, spaces: 11, icon: 'fa-language' }
 ];
 

@@ -83,6 +83,8 @@
       // Sorting configuration used by the displayed computed list
       const sortKey = ref('title');
       const sortDir = ref('asc');
+      // Current page within the shop: 'lessons' or 'cart'
+      const page = ref('lessons');
       // Search term for 'search-as-you-type' filtering
       const searchTerm = ref('');
 
@@ -154,8 +156,10 @@
 
       // Checkout form and simple validation patterns
       const customer = reactive({ name: '', phone: '' });
-      const nameRegex = /^[A-Za-z .'-]{2,}$/;
-      const phoneRegex = /^[0-9 +()\-]{7,20}$/;
+      // Name: letters and spaces only (minimum 2 chars)
+      const nameRegex = /^[A-Za-z ]{2,}$/;
+      // Phone: digits only, minimum 7 digits up to 20
+      const phoneRegex = /^\d{7,20}$/;
 
       const canCheckout = computed(() => nameRegex.test(customer.name) && phoneRegex.test(customer.phone) && cart.value.length > 0);
 
@@ -212,7 +216,7 @@
       return {
         view, token, loginForm, loginError, login, logout,
         lessons, loading, loadLessons, sortBy, displayed, sortKey, sortDir,
-        cart, inCart, addToCart, removeFromCart,
+        cart, inCart, addToCart, removeFromCart, page,
         searchTerm,
         customer, nameRegex, phoneRegex, canCheckout, checkout,
         sanitizeName, sanitizePhone
@@ -251,6 +255,12 @@
             <h1><i class="fa fa-store"></i> Lesson Shop</h1>
             <div>
               <button class="logout" @click="logout"><i class="fa fa-sign-out-alt"></i> Logout</button>
+              <!-- Cart toggle: enabled only when cart has items -->
+              <button class="logout" :disabled="cart.length===0" @click="page = (page==='cart' ? 'lessons' : 'cart')" :aria-pressed="page==='cart'">
+                <i class="fa fa-shopping-cart"></i>
+                <span v-if="cart.length>0">Cart ({{cart.length}})</span>
+                <span v-else>Cart</span>
+              </button>
             </div>
           </header>
 
@@ -269,43 +279,14 @@
                 <button @click="sortBy('spaces')">Spaces <i class="fa" :class="sortKey==='spaces' ? (sortDir==='asc'? 'fa-sort-amount-down' : 'fa-sort-amount-up') : 'fa-sort'"></i></button>
               </div>
 
-              <h3><i class="fa fa-shopping-cart"></i> Cart ({{cart.length}})</h3>
-              <!-- Informational hint: spaces are only reserved after checkout -->
-              <p class="hint">Note: spaces are reserved only after you complete checkout; adding to cart updates the UI locally.</p>
-              <div v-if="cart.length===0">No items in cart</div>
-              <ul class="cart-list">
-                <li v-for="item in cart" :key="item.id">
-                  <strong>{{item.lesson.title}}</strong>
-                  <div>
-                    <small>{{item.lesson.location}} — £{{item.lesson.price.toFixed(2)}}</small>
-                    <!-- Provide an aria-label so screen reader users hear what will be removed -->
-                    <button class="small" @click="removeFromCart(item)" :aria-label="'Remove ' + item.lesson.title">
-                      <i class="fa fa-trash" aria-hidden="true"></i>
-                      Remove
-                    </button>
-                  </div>
-                </li>
-              </ul>
-
-              <h4 id="customerTitle">Customer</h4>
-              <!-- Wrap customer fields in a form so keyboard users can submit with Enter. -->
-              <form class="customer-form" @submit.prevent="checkout" aria-labelledby="customerTitle" novalidate>
-                <div class="field">
-                  <label for="customer-name">Name</label>
-                  <input id="customer-name" name="customer-name" v-model="customer.name" @input="sanitizeName" placeholder="Full name" required aria-required="true" />
-                </div>
-                <div class="field">
-                  <label for="customer-phone">Phone</label>
-                  <input id="customer-phone" name="customer-phone" type="tel" inputmode="numeric" v-model="customer.phone" @input="sanitizePhone" placeholder="Phone number" required aria-required="true" />
-                </div>
-                <button class="checkout" type="submit" :disabled="!canCheckout" :aria-disabled="!canCheckout">
-                  <i class="fa fa-credit-card" aria-hidden="true"></i>
-                  <span>Checkout</span>
-                </button>
-              </form>
+                <!-- Informational hint: spaces are only reserved after checkout -->
+                <p class="hint">Note: spaces are reserved only after you complete checkout; adding to cart updates the UI locally.</p>
+                <!-- Filters area keeps search and sorting. Cart details and checkout
+                     are shown on the dedicated Cart page (main content) when the
+                     user toggles the Cart button in the header. -->
             </aside>
 
-            <section class="shop">
+            <section v-if="page==='lessons'" class="shop">
               <h2>Available Lessons</h2>
               <div v-if="loading">Loading lessons...</div>
               <div class="lessons-grid">
@@ -325,6 +306,42 @@
                     </button>
                   </div>
                 </article>
+              </div>
+            </section>
+
+            <section v-else-if="page==='cart'" class="shop">
+              <h2>Your Cart</h2>
+              <div v-if="cart.length===0">No items in cart</div>
+              <div class="lessons-grid">
+                <article class="lesson" v-for="item in cart" :key="item.id">
+                  <div class="lesson-header">
+                    <i class="fa" :class="item.lesson.icon"></i>
+                    <h3>{{item.lesson.title}}</h3>
+                  </div>
+                  <p class="meta"><i class="fa fa-map-marker-alt"></i> {{item.lesson.location}} — <i class="fa fa-money-bill-wave"></i> £{{item.lesson.price.toFixed(2)}}</p>
+                  <p><strong>Quantity:</strong> {{item.qty}}</p>
+                  <div class="actions">
+                    <button class="small" @click="removeFromCart(item)"><i class="fa fa-trash" aria-hidden="true"></i> Remove</button>
+                  </div>
+                </article>
+              </div>
+
+              <div class="checkout-area">
+                <h3>Checkout</h3>
+                <form class="customer-form" @submit.prevent="checkout" novalidate>
+                  <div class="field">
+                    <label for="customer-name-cart">Name</label>
+                    <input id="customer-name-cart" name="customer-name-cart" v-model="customer.name" @input="sanitizeName" placeholder="Full name" required aria-required="true" />
+                  </div>
+                  <div class="field">
+                    <label for="customer-phone-cart">Phone</label>
+                    <input id="customer-phone-cart" name="customer-phone-cart" type="tel" inputmode="numeric" v-model="customer.phone" @input="sanitizePhone" placeholder="Phone number" required aria-required="true" />
+                  </div>
+                  <button class="checkout" type="submit" :disabled="!canCheckout" :aria-disabled="!canCheckout">
+                    <i class="fa fa-credit-card" aria-hidden="true"></i>
+                    <span>Checkout</span>
+                  </button>
+                </form>
               </div>
             </section>
           </main>
