@@ -51,6 +51,8 @@
           // Switch to shop view and load lessons immediately so the
           // user sees available lessons after logging in.
           view.value = 'shop';
+          // Ensure the shop opens on the lessons page (not the cart)
+          page.value = 'lessons';
           await loadLessons();
         } catch (e) {
           loginError.value = 'Login failed';
@@ -61,6 +63,8 @@
         token.value = null;
         localStorage.removeItem('token');
         view.value = 'login';
+        // Reset shop-page state so returning users don't land back in cart
+        page.value = 'lessons';
       }
 
       // --- Shop state -------------------------------------------------
@@ -152,6 +156,11 @@
           lessons.value[idx].spaces = lessons.value[idx].spaces + 1;
         }
         cart.value = cart.value.filter(i => i.id !== item.id);
+        // If cart is now empty, return the user to the lessons view so
+        // they can continue shopping without needing to logout/login.
+        if (cart.value.length === 0) {
+          page.value = 'lessons';
+        }
       }
 
       // Checkout form and simple validation patterns
@@ -200,6 +209,8 @@
         await loadLessons();
         customer.name = '';
         customer.phone = '';
+        // Return user to the lessons view after successful checkout
+        page.value = 'lessons';
       }
 
       // Sanitize input helpers for customer fields. These keep the model
@@ -246,7 +257,7 @@
 
             <!-- Announce errors to assistive tech immediately -->
             <p class="error" v-if="loginError" role="alert" aria-live="assertive">{{loginError}}</p>
-            <p class="hint">Use <code>admin/12345</code> or <code>user/12345</code></p>
+            <!-- <p class="hint">Use <code>admin/12345</code> or <code>user/12345</code></p> -->
           </form>
         </template>
 
@@ -280,7 +291,7 @@
               </div>
 
                 <!-- Informational hint: spaces are only reserved after checkout -->
-                <p class="hint">Note: spaces are reserved only after you complete checkout; adding to cart updates the UI locally.</p>
+                <!-- <p class="hint">Note: spaces are reserved only after you complete checkout; adding to cart updates the UI locally.</p> -->
                 <!-- Filters area keeps search and sorting. Cart details and checkout
                      are shown on the dedicated Cart page (main content) when the
                      user toggles the Cart button in the header. -->
